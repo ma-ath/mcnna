@@ -39,32 +39,39 @@ class MCNN:
         """
             TODO: Deve implementar eval por batch para ficar mais rapido
         """
-        # Pass all masks through model
+        # Pass all masks through model...
         self.output_vectors = []
-        model = model.eval().to(device)
+        model = model.to(device)
         with torch.no_grad():
+            input = input.to(device)
+            if transforms is not None:
+                input = transforms(input)
             for mask in tqdm(self.r_maps, desc= "Inputting random masks to model", disable=self.ommit_progress):
-                input = input.to(device)
-                if transforms is not None:
-                    input = transforms(input)
                 masked_input = input * mask
                 batch = torch.stack([masked_input])
                 output = model(batch)
                 self.output_vectors.append(output)
-        
-        # Create label maps
-        self.attention_maps = []
+      
+            # Create an attention map using the distance from each individual label
+            self.attention_maps = []
 
-        for r_map in tqdm(range(self.output_vectors[0].shape[1]), desc= "Calculating maps results", disable=self.ommit_progress):
-            map = torch.zeros(self.size).to(device)
+            for r_map in tqdm(range(self.output_vectors[0].shape[1]), desc= "Calculating maps results", disable=self.ommit_progress):
+                map = torch.zeros(self.size).to(device)
+                for i in range(len(self.r_maps)):
+                    map += (self.r_maps[i]-self.r_maps.mean_map) * (self.output_vectors[i][0, r_map]-self.output_vectors[0][0, r_map])/len(self.r_maps)
+                self.attention_maps.append(map)
+            
+            # Create and attention map for the full output vector using euclidian distance
+            self.attention_map_euclidian = torch.zeros(self.size).to(device)
+
             for i in range(len(self.r_maps)):
-                map += (self.r_maps[i]-self.r_maps.mean_map) * (self.output_vectors[i][0, r_map]-self.output_vectors[0][0, r_map])/len(self.r_maps)
-            self.attention_maps.append(map)
+                self.attention_map_euclidian += (self.r_maps[i]-self.r_maps.mean_map)*torch.sqrt(torch.sum(torch.square(self.output_vectors[i]-self.output_vectors[0])))/len(self.r_maps)
 
+    def pca(self):
         # Calculate PCA of all attention_maps
         # PCA of all those maps
 
-        X = torch.empty(len(self.attention_maps),math.prod(self.size))
+        X = torch.empty(len(self.attention_maps), math.prod(self.size))
         for i in tqdm(range(len(self.attention_maps)), desc= "Preparing for PCA", disable=self.ommit_progress):
             X[i] = self.attention_maps[i].flatten()
             X[i]-= X[i].mean()
@@ -148,7 +155,7 @@ if __name__ == '__main__':
     mcnn = MCNN(10, (224,224))
 
     weights = VGG16_Weights.DEFAULT
-    model = vgg16(weights=weights, progress=False)
+    model = vgg16(weights=weights, progress=False).eval()
     transforms = weights.transforms()
 
     mcnn.simulate(image, model, transforms)
