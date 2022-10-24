@@ -20,7 +20,7 @@ import torchvision
 import torch
 
 if is_notebook():
-    import tqdm.notebook as tqdm
+    from tqdm.notebook import tqdm
 else:
     from tqdm import tqdm
 
@@ -35,7 +35,7 @@ class MCNN:
         self.solution = []
         self.ommit_progress = ommit_progress
 
-    def simulate(self, input, model, transforms):
+    def simulate(self, input, model, transforms=None):
         """
             TODO: Deve implementar eval por batch para ficar mais rapido
         """
