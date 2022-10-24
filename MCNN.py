@@ -1,46 +1,101 @@
+def is_notebook() -> bool:
+    from IPython import get_ipython
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True   # Jupyter notebook or qtconsole
+        elif shell == 'TerminalInteractiveShell':
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except NameError:
+        return False      # Probably standard Python interpreter
+
 import numpy as np
+import math
 import cv2
 import skimage
 import matplotlib.pyplot as plt
 import torchvision
 import torch
-import torch.nn as nn
+
+if is_notebook():
+    import tqdm.notebook as tqdm
+else:
+    from tqdm import tqdm
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+# ---------------------------- #
+
 class MCNN:
-    def __init__(self, n:int, size:tuple):
-        self.r_maps = self.__RandomMaps(n, size)
+    def __init__(self, n:int, size:tuple, ommit_progress:bool=False):
+        self.size = size
+        self.r_maps = self.__RandomMaps(n, size, ommit_progress)
         self.solution = []
+        self.ommit_progress = ommit_progress
 
     def simulate(self, input, model, transforms):
         """
             TODO: Deve implementar eval por batch para ficar mais rapido
         """
-        self.result = []
+        # Pass all masks through model
+        self.output_vectors = []
         model = model.eval().to(device)
         with torch.no_grad():
-            for mask in self.r_maps:
+            for mask in tqdm(self.r_maps, desc= "Inputting random masks to model", disable=self.ommit_progress):
                 input = input.to(device)
                 if transforms is not None:
                     input = transforms(input)
                 masked_input = input * mask
                 batch = torch.stack([masked_input])
                 output = model(batch)
-                self.result.append(output)
+                self.output_vectors.append(output)
+        
+        # Create label maps
+        self.attention_maps = []
+
+        for r_map in tqdm(range(self.output_vectors[0].shape[1]), desc= "Calculating maps results", disable=self.ommit_progress):
+            map = torch.zeros(self.size).to(device)
+            for i in range(len(self.r_maps)):
+                map += (self.r_maps[i]-self.r_maps.mean_map) * (self.output_vectors[i][0, r_map]-self.output_vectors[0][0, r_map])/len(self.r_maps)
+            self.attention_maps.append(map)
+
+        # Calculate PCA of all attention_maps
+        # PCA of all those maps
+
+        X = torch.empty(len(self.attention_maps),math.prod(self.size))
+        for i in tqdm(range(len(self.attention_maps)), desc= "Preparing for PCA", disable=self.ommit_progress):
+            X[i] = self.attention_maps[i].flatten()
+            X[i]-= X[i].mean()
+            X[i] = torch.div(X[i], math.sqrt(math.prod(self.size)))
+        X=X.t()
+
+        # Calculate the SVD of this data
+        print(f'Calculating SVD of data...')
+        U, self.S, _ = torch.linalg.svd(X)
+
+        self.attention_maps_pca = []
+
+        for i in tqdm(range(len(U[0])), desc= "Reshaping PCA maps", disable=self.ommit_progress):
+            self.attention_maps_pca.append(torch.reshape(U[:,i], self.size))
+        
+        if not self.ommit_progress:
+            print(f"Done")
 
     class __RandomMaps:
         """
         Generate random mask maps for the input
         """
-        def __init__(self, n:int, size:tuple):
+        def __init__(self, n:int, size:tuple, ommit_progress:bool=False):
+            self.ommit_progress=ommit_progress
             self.r_maps = []
 
             # First map is all ones a.k.a no mask applied
             self.r_maps.append(torch.ones(size).to(device))
 
             # Other maps are mask 'blobs'
-            for i in range(n-1):
+            for i in tqdm(range(n-1), desc="Generating random masks", disable=self.ommit_progress):
                 # define random seed to change the pattern
                 rng = np.random.default_rng()
                 # create random noise image
@@ -97,5 +152,3 @@ if __name__ == '__main__':
     transforms = weights.transforms()
 
     mcnn.simulate(image, model, transforms)
-
-    print(mcnn.r_maps[0])
