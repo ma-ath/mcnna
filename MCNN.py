@@ -51,17 +51,29 @@ class MCNN:
                 batch = torch.stack([masked_input])
                 output = model(batch)
                 self.output_vectors.append(output)
+            
+            self.output_vectors = torch.squeeze(torch.stack(self.output_vectors))
       
             # Create an attention map using the distance from each individual label
             self.attention_maps = []
 
-            #for r_map in tqdm(range(self.output_vectors[0].shape[1]), desc= "Calculating maps results", disable=self.ommit_progress):
-                #map = torch.zeros(self.size).to(device)
-                #for i in range(len(self.r_maps)):
-                #    map += (self.r_maps[i]-self.r_maps.mean_map) * (self.output_vectors[i][0, r_map]-self.output_vectors[0][0, r_map])/len(self.r_maps)
-                #self.attention_maps.append(map)
+            for label in tqdm(range(self.output_vectors.shape[1]), desc= "Calculating maps results", disable=self.ommit_progress):
+                map = torch.sum(
+                        torch.div(
+                            torch.mul(
+                                torch.subtract(self.r_maps.r_maps, self.r_maps.mean_map),
+                                torch.subtract(
+                                    self.output_vectors[:, label],
+                                    self.output_vectors[0, label]
+                                    )[:, None, None]
+                                ),
+                            len(self.r_maps)
+                            ), dim=0
+                        )
+                self.attention_maps.append(map)
             
             # Create and attention map for the full output vector using euclidian distance
+            # We could pararelise this but this is fast enougth none the less.
             self.attention_map_euclidian = torch.zeros(self.size).to(device)
 
             for i in range(len(self.r_maps)):
