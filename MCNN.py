@@ -55,11 +55,11 @@ class MCNN:
             # Create an attention map using the distance from each individual label
             self.attention_maps = []
 
-            for r_map in tqdm(range(self.output_vectors[0].shape[1]), desc= "Calculating maps results", disable=self.ommit_progress):
-                map = torch.zeros(self.size).to(device)
-                for i in range(len(self.r_maps)):
-                    map += (self.r_maps[i]-self.r_maps.mean_map) * (self.output_vectors[i][0, r_map]-self.output_vectors[0][0, r_map])/len(self.r_maps)
-                self.attention_maps.append(map)
+            #for r_map in tqdm(range(self.output_vectors[0].shape[1]), desc= "Calculating maps results", disable=self.ommit_progress):
+                #map = torch.zeros(self.size).to(device)
+                #for i in range(len(self.r_maps)):
+                #    map += (self.r_maps[i]-self.r_maps.mean_map) * (self.output_vectors[i][0, r_map]-self.output_vectors[0][0, r_map])/len(self.r_maps)
+                #self.attention_maps.append(map)
             
             # Create and attention map for the full output vector using euclidian distance
             self.attention_map_euclidian = torch.zeros(self.size).to(device)
@@ -78,9 +78,9 @@ class MCNN:
             X[i] = torch.div(X[i], math.sqrt(math.prod(self.size)))
         X=X.t()
 
-        # Calculate the SVD of this data
+        # Calculate the reduced SVD of this data
         print(f'Calculating SVD of data...')
-        U, self.S, _ = torch.linalg.svd(X)
+        U, self.S, _ = torch.linalg.svd(X, full_matrices=False)
 
         self.attention_maps_pca = []
 
@@ -119,11 +119,11 @@ class MCNN:
                 result = cv2.morphologyEx(result, cv2.MORPH_CLOSE, kernel)
 
                 self.r_maps.append(torch.from_numpy((255-result)/255).long().to(device))
+            
+            self.r_maps = torch.stack(self.r_maps).to(device)
         
             # Calculate mean map
-            self.mean_map = torch.zeros(size).to(device)
-            for map in self.r_maps:
-                self.mean_map += map / len(self.r_maps)
+            self.mean_map = torch.sum(torch.div(self.r_maps, self.r_maps.shape[0]), dim=0)
 
         def __getitem__(self, n:int):
             return self.r_maps[n]
@@ -152,7 +152,7 @@ if __name__ == '__main__':
 
     image = torchvision.io.read_image(str(Path('assets') / 'kid_dog_adult.jpg'))
 
-    mcnn = MCNN(10, (224,224))
+    mcnn = MCNN(100, (224,224))
 
     weights = VGG16_Weights.DEFAULT
     model = vgg16(weights=weights, progress=False).eval()
