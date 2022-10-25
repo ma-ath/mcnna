@@ -1,6 +1,8 @@
-# Montecarlo CNN Vision Analisys
+# Monte Carlo CNN Vision Analisys
 
-An approach to try to understand what a CNN is looking at when classifying images using a monte-carlo based algorithnm.
+An approach to try to understand what a CNN is looking at when classifying images using a monte carlo based algorithnm.
+
+![](/assets/dog_readme.png "Output of MCNNA")
 
 ## How it works
 
